@@ -7,6 +7,17 @@ version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/" # Location of package manifests
+    requirements-file: "requirements.txt" # specify the dev requirements file
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          ["version-update:semver-patch", "version-update:semver-minor"]
+
+  - package-ecosystem: "pip"
+    directory: "/" # location of the requirements-dev.txt
+    requirements-file: "requirements-dev.txt" # specify the dev requirements file
     schedule:
       interval: "weekly"
     ignore:
