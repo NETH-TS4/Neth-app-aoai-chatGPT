@@ -12,7 +12,7 @@ import Plot from 'react-plotly.js'
 import { AskResponse, Citation, Feedback, historyMessageFeedback } from '../../api'
 import { XSSAllowTags, XSSAllowAttributes } from '../../constants/sanatizeAllowables'
 import { AppStateContext } from '../../state/AppProvider'
-
+import copy from 'copy-to-clipboard'
 import { parseAnswer } from './AnswerParser'
 
 import styles from './Answer.module.css'
@@ -228,17 +228,62 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
   }
 
   const components = {
-    code({ node, ...props }: { node: any;[key: string]: any }) {
+    code({ node, ...props }: { node: any; [key: string]: any }) {
+      const [isCopied, setIsCopied] = useState(false)
+
       let language
       if (props.className) {
         const match = props.className.match(/language-(\w+)/)
         language = match ? match[1] : undefined
       }
       const codeString = node.children[0].value ?? ''
+
+      const handleCopyClick = () => {
+        copy(codeString)
+        setIsCopied(true)
+        setTimeout(() => {
+          setIsCopied(false)
+        }, 2000)
+      }
+
       return (
-        <SyntaxHighlighter style={nord} language={language} PreTag="div" {...props}>
-          {codeString}
-        </SyntaxHighlighter>
+        <div style={{ position: 'relative' }}>
+          <SyntaxHighlighter style={nord} language={language} PreTag="div" {...props}>
+            {codeString}
+          </SyntaxHighlighter>
+          <button
+          onClick={handleCopyClick}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            backgroundColor: '#f3f3f3',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            padding: '5px',
+          }}
+          title={isCopied ? 'Copied!' : 'Copy to clipboard'}
+        >
+          <FontIcon iconName="Copy" />
+        </button>
+        {isCopied && (
+          <span
+            style={{
+              position: 'absolute',
+              top: '10px',
+              right: '50px',
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              color: '#fff',
+              padding: '3px 6px',
+              borderRadius: '4px',
+              fontSize: '12px',
+            }}
+          >
+            Copied!
+          </span>
+        )}
+        </div>
       )
     }
   }
@@ -253,7 +298,10 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                 remarkPlugins={[remarkGfm, supersub]}
                 children={
                   SANITIZE_ANSWER
-                    ? DOMPurify.sanitize(parsedAnswer.markdownFormatText, { ALLOWED_TAGS: XSSAllowTags, ALLOWED_ATTR: XSSAllowAttributes })
+                    ? DOMPurify.sanitize(parsedAnswer.markdownFormatText, {
+                        ALLOWED_TAGS: XSSAllowTags,
+                        ALLOWED_ATTR: XSSAllowAttributes
+                      })
                     : parsedAnswer.markdownFormatText
                 }
                 className={styles.answerText}
@@ -269,7 +317,7 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                     onClick={() => onLikeResponseClicked()}
                     style={
                       feedbackState === Feedback.Positive ||
-                        appStateContext?.state.feedbackState[answer.message_id] === Feedback.Positive
+                      appStateContext?.state.feedbackState[answer.message_id] === Feedback.Positive
                         ? { color: 'darkgreen', cursor: 'pointer' }
                         : { color: 'slategray', cursor: 'pointer' }
                     }
@@ -280,8 +328,8 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                     onClick={() => onDislikeResponseClicked()}
                     style={
                       feedbackState !== Feedback.Positive &&
-                        feedbackState !== Feedback.Neutral &&
-                        feedbackState !== undefined
+                      feedbackState !== Feedback.Neutral &&
+                      feedbackState !== undefined
                         ? { color: 'darkred', cursor: 'pointer' }
                         : { color: 'slategray', cursor: 'pointer' }
                     }
@@ -337,15 +385,9 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                     aria-label="Open Intents"
                     tabIndex={0}
                     role="button">
-                    <span>
-                      Show Intents
-                    </span>
+                    <span>Show Intents</span>
                   </Text>
-                  <FontIcon
-                    className={styles.accordionIcon}
-                    onClick={handleChevronClick}
-                    iconName={'ChevronRight'}
-                  />
+                  <FontIcon className={styles.accordionIcon} onClick={handleChevronClick} iconName={'ChevronRight'} />
                 </Stack>
               </Stack>
             </Stack.Item>
