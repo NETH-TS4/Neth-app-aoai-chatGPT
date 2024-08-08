@@ -172,6 +172,67 @@ async def init_openai_client():
         azure_openai_client = None
         raise e
 
+async def init_custom_openai_client(ai_setting):
+    azure_openai_client = None
+    
+    try:
+        # API version check
+        if (
+            ai_setting.preview_api_version
+            < MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION
+        ):
+            raise ValueError(
+                f"The minimum supported Azure OpenAI preview API version is '{MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION}'"
+            )
+
+        # Endpoint
+        if (
+            not ai_setting.endpoint and
+            not ai_setting.resource
+        ):
+            raise ValueError(
+                "AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_RESOURCE is required"
+            )
+
+        endpoint = (
+            ai_setting.endpoint
+            if ai_setting.endpoint
+            else f"https://{ai_setting.resource}.openai.azure.com/"
+        )
+
+        # Authentication
+        aoai_api_key = ai_setting.key
+        ad_token_provider = None
+        if not aoai_api_key:
+            logging.debug("No AZURE_OPENAI_KEY found, using Azure Entra ID auth")
+            async with DefaultAzureCredential() as credential:
+                ad_token_provider = get_bearer_token_provider(
+                    credential,
+                    "https://cognitiveservices.azure.com/.default"
+                )
+
+        # Deployment
+        deployment = ai_setting.model
+        if not deployment:
+            raise ValueError("AZURE_OPENAI_MODEL is required")
+
+        # Default Headers
+        default_headers = {"x-ms-useragent": USER_AGENT}
+
+        azure_openai_client = AsyncAzureOpenAI(
+            api_version=ai_setting.preview_api_version,
+            api_key=aoai_api_key,
+            azure_ad_token_provider=ad_token_provider,
+            default_headers=default_headers,
+            azure_endpoint=endpoint,
+        )
+
+        return azure_openai_client
+    except Exception as e:
+        logging.exception("Exception in Azure OpenAI initialization", e)
+        azure_openai_client = None
+        raise e
+
 
 async def init_cosmosdb_client():
     cosmos_conversation_client = None
@@ -326,6 +387,8 @@ async def promptflow_request(request):
 async def send_chat_request(request_body, request_headers):
     filtered_messages = []
     messages = request_body.get("messages", [])
+
+    model = request_body.get("model", app_settings.azure_openai.model)
     for message in messages:
         if message.get("role") != 'tool':
             filtered_messages.append(message)
@@ -334,7 +397,12 @@ async def send_chat_request(request_body, request_headers):
     model_args = prepare_model_args(request_body, request_headers)
 
     try:
-        azure_openai_client = await init_openai_client()
+        if (model == app_settings.azure_gpt_35.model_name):
+            azure_openai_client = await init_custom_openai_client(app_settings.azure_gpt_35)
+            
+        else:
+            azure_openai_client = await init_custom_openai_client(app_settings.azure_openai)
+
         raw_response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
         response = raw_response.parse()
         apim_request_id = raw_response.headers.get("apim-request-id") 
@@ -374,7 +442,7 @@ async def stream_chat_request(request_body, request_headers):
 
 async def conversation_internal(request_body, request_headers):
     try:
-        if app_settings.azure_openai.stream and not app_settings.base_settings.use_promptflow:
+        if app_settings.base_settings.stream and not app_settings.base_settings.use_promptflow:
             result = await stream_chat_request(request_body, request_headers)
             response = await make_response(format_as_ndjson(result))
             response.timeout = None
